@@ -61,7 +61,6 @@ defmodule Flows do
         [{1, "Crap"}, {2, "Crap"}, {3, "Buzz"}, {4, "Crap"}, {5, "Fizz"}, {6, "Buzz"}]
     """
     def map(:flow, enumerable, mapper) do
-      # join_window = Flow.Window.global() |> Flow.Window.trigger_periodically(10, :second)
       count = Enum.count(enumerable)
       key = &div(&1, 8)
 
@@ -115,6 +114,28 @@ defmodule Flows do
         |> Enum.to_list()
 
       for [h | _] = list <- lists, into: %{}, do: {elem(mapper.(h), 1), Enum.reverse(list)}
+    end
+
+    @doc """
+    `FizzBuzz` with `Flow`, working with infinite input and returning a map of `%{result => [input]}`.
+
+        Flows.FizzBuzz.reduce(:instant_flow, Stream.iterate(1, &(&1+1)))
+        # instant output every second
+    """
+    def reduce(:instant_flow, enumerable, mapper) do
+      join_window = Flow.Window.global() |> Flow.Window.trigger_periodically(1, :second)
+
+      trigger_fun = fn items, {idx, 8}, {:global, :global, {:periodically, 1, :second}} ->
+        unless items == [], do: IO.puts(elem(mapper(idx), 1) <> " => " <> inspect(items))
+        {[length(items)], items}
+      end
+
+      enumerable
+      |> Flow.from_enumerable()
+      |> Flow.partition(key: &elem(mapper(&1), 1), window: join_window)
+      |> Flow.reduce(fn -> [] end, &[elem(mapper.(&1), 0) | &2])
+      |> Flow.on_trigger(trigger_fun)
+      |> Enum.to_list()
     end
 
     @doc "A helper to make benchmarks, exposes a mapper that delays before return"
